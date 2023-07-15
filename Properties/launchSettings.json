@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "GetIdealQueries": {
+      "commandName": "Project",
+      "commandLineArgs": "C:\\Users\\bobgood\\Downloads\\flux_6_30\\92a805b8-0199-44dc-af51-70d78ac86cf1 t=C:\\Users\\bobgood\\Downloads\\flux_6_30 C:\\Users\\bobgood\\Downloads\\Exp3\\0606ab36-fa48-4c8f-9985-ea32967e0a94 t=C:\\Users\\bobgood\\Downloads\\flux_6_30\\92a805b8-0199-44dc-af51-70d78ac86cf1 t=C:\\Users\\bobgood\\Downloads\\Exp3\\0606ab36-fa48-4c8f-9985-ea32967e0a94"
+    }
+  }
+}
