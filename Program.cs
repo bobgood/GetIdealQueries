@@ -1,12 +1,14 @@
 ﻿using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Reflection.Metadata.Ecma335;
 using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 
 
-namespace MyApp 
+namespace MyApp
 {
     using RESULT = (double score, System.Collections.Generic.HashSet<string> queries);
     using ResultDict = System.Collections.Generic.Dictionary<string, (double score, System.Collections.Generic.HashSet<string> queries)>;
@@ -14,17 +16,29 @@ namespace MyApp
     internal class Program
     {
         static string idealsFilename = "e:\\tmp\\ideals.tsv";
+        static string multiFilename = "e:\\tmp\\multi.tsv";
 
         static void Main(string[] args)
         {
-            if (args.Length >1)
+            if (args.Length > 1)
             {
                 ReadIdeals();
+                ReadEquivalents();
+                block = ReadList("block.csv");
+                perfects = ReadListHash("perfects.csv");
                 CreateConsole(args);
             }
             else
             {
                 Search("C:\\Users\\bobgood\\Downloads");
+                using (TextWriter tw = new StreamWriter(multiFilename))
+                {
+                    foreach (var n in multiIterationV2Utterances)
+                    {
+                        tw.WriteLine(n);
+                    }
+                }
+
                 using (TextWriter tw = new StreamWriter(idealsFilename))
                 {
                     foreach (var n in scores.Keys)
@@ -47,7 +61,7 @@ namespace MyApp
 
                     foreach (var n in unfilledQueries.Keys)
                     {
-                        if (!scores.ContainsKey(n) && unfilledQueries[n].Count()>0)
+                        if (!scores.ContainsKey(n) && unfilledQueries[n].Count() > 0)
                         {
                             tw.Write("*");
                             tw.Write(n);
@@ -55,7 +69,7 @@ namespace MyApp
                             int total = 0;
                             foreach (var m in unfilledQueries[n])
                             {
-                                total ++;
+                                total++;
                             }
 
                             foreach (var m in unfilledQueries[n])
@@ -72,6 +86,87 @@ namespace MyApp
 
         static Dictionary<string, Dictionary<string, double>> ideals = new Dictionary<string, Dictionary<string, double>>(StringComparer.OrdinalIgnoreCase);
         static HashSet<string> idealNoCitations = new HashSet<string>();
+        static HashSet<string> multiIterationV2Utterances = new HashSet<string>();
+
+        static void CheckInterationCount(string ruu, string json)
+        {
+            int cnt = 0;
+            int pos = 0;
+            while (pos >= 0)
+            {
+                pos = json.IndexOf("\"serviceName\": \"PolymerLLM\",", pos + 10);
+                if (pos >= 0)
+                {
+                    cnt++;
+                }
+            }
+
+            if (cnt > 2)
+            {
+                multiIterationV2Utterances.Add(ruu);
+            }
+        }
+
+        static Dictionary<string, string> equivalents = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        static void ReadEquivalents()
+        {
+            using (TextReader tr = new StreamReader("equivalents.csv"))
+            {
+                string line;
+                while (null != (line = tr.ReadLine()))
+                {
+                    string[] parts = line.Split(',');
+                    if (parts.Length == 2)
+                    {
+                        equivalents[parts[0].Trim()] = parts[1].Trim();
+                    }
+                }
+            }
+        }
+
+        static List<HashSet<string>> perfects;
+        static HashSet<string> block;
+
+        static List<HashSet<string>> ReadListHash(string fn)
+        {
+            List<HashSet<string>> result = new List<HashSet<string>>();
+            using (TextReader tr = new StreamReader(fn))
+            {
+                string line;
+                while (null != (line = tr.ReadLine()))
+                {
+                    if (line.Trim().Length == 0) continue;
+                    HashSet<string> h = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var p in line.Split(","))
+                    {
+                        h.Add(p.Trim());
+                    }
+
+                    result.Add(h);
+                }
+            }
+
+            return result;
+        }
+
+        static HashSet<string> ReadList(string fn)
+        {
+            HashSet<string> result = new HashSet<string>();
+            using (TextReader tr = new StreamReader(fn))
+            {
+                string line;
+                while (null != (line = tr.ReadLine()))
+                {
+                    var p = line.Trim();
+                    if (p.Length >0)
+                    {
+                        result.Add(p);
+                    }
+                }
+            }
+
+            return result;
+        }
 
         static void ReadIdeals()
         {
@@ -82,7 +177,7 @@ namespace MyApp
                 {
                     string[] parts = line.Split('\t');
                     string ruu = parts[0];
-                    if (ruu[0]=='*')
+                    if (ruu[0] == '*')
                     {
                         ruu = ruu.Substring(1);
                         idealNoCitations.Add(ruu);
@@ -99,44 +194,71 @@ namespace MyApp
         }
 
         static List<(string title, ResultDict dict)> experiments = new List<(string title, ResultDict dict)>();
+        static List<string> previousTsv = new List<string>();
         static void CreateConsole(string[] args)
         {
             int treatmentCount = 0;
             int controlCount = 0;
-            foreach (var arg in args)
+            for (int i = 1; i < args.Length; i++)
             {
+                var arg = args[i];
                 string path = arg;
-                bool isTreatment = false; 
-                if (path.Length>2 && path[1]=='=')
+                bool isTreatment = false;
+                if (path.Length > 2 && path[1] == '=')
                 {
                     if (path[0] == 't')
                     {
-                        isTreatment=true ;
+                        isTreatment = true;
+                    }
+
+                    if (path[0] == 'p')
+                    {
+                        var parts = path.Split('=');
+                        GetHistory(parts[2], parts[1]);
+                        previousTsv.Add(path);
+                        continue;
                     }
 
                     path = path.Substring(2).Trim();
                 }
 
+
                 string title;
+                List<string> prefixes = new List<string>() { controlPrefix };
                 if (isTreatment)
                 {
-                    title = "Treatment";
-                    if (treatmentCount++> 0)
-                    {
-                        title += " " + treatmentCount;
-                    }
+                    var prefixes1 = new HashSet<string>();
+                    GetTreatmentScans(path, prefixes1);
+                    prefixes = prefixes1.ToList();
+                    prefixes.Sort();
                 }
-                else
+
+
+                foreach (var pre in prefixes)
                 {
-                    title = "Control";
-                    if (controlCount++ > 0)
+                    if (isTreatment)
                     {
-                        title += " " + controlCount;
+                        title = "Treatment";
+                        if (treatmentCount++ > 0)
+                        {
+                            title += " " + treatmentCount;
+                        }
                     }
+                    else
+                    {
+                        title = "Control";
+                        if (controlCount++ > 0)
+                        {
+                            title += " " + controlCount;
+                        }
+                    }
+
+                    var experiment = CreateConsole0(path, pre);
+                    experiments.Add((title, experiment));
                 }
-                var experiment = CreateConsole0(path, isTreatment);
-                experiments.Add((title, experiment));
             }
+
+            experiments.Sort((x, y) => x.title.CompareTo(y.title));
 
             List<(string ruu, double prio)> prios = new List<(string ruu, double prio)>();
             HashSet<string> allRuus = new HashSet<string>();
@@ -145,7 +267,10 @@ namespace MyApp
             {
                 foreach (var ruu in experiment.dict.Keys)
                 {
-                    allRuus.Add(ruu);
+                    if (!block.Contains(ruu))
+                    {
+                        allRuus.Add(ruu);
+                    }
                 }
 
             }
@@ -177,7 +302,7 @@ namespace MyApp
 
 
                 double diff = ttot / Math.Max(tcnt, 1) - ctot / (Math.Max(ccnt, 1));
-                if (tcnt > 0 || ccnt > 0)
+                if (tcnt > 0)
                 {
                     prios.Add((ruu, diff));
                 }
@@ -185,13 +310,13 @@ namespace MyApp
 
             var sortedList = prios.OrderBy(item => item.prio).ToList();
 
-            using (TextWriter tw = new StreamWriter("e:\\tmp\\report.tsv"))
+            using (TextWriter tw = new StreamWriter(args[0]))
             {
                 tw.WriteLine("utterance\tscore diff\tsource\tscore\t3S query 1\t3S query 2");
                 foreach (var e in sortedList)
                 {
                     bool first = true;
-                    foreach  (var experiment in experiments)
+                    foreach (var experiment in experiments)
                     {
                         if (experiment.dict.TryGetValue(e.ruu, out var value))
                         {
@@ -210,6 +335,7 @@ namespace MyApp
                             {
                                 asterisk = "*";
                             }
+
                             tw.Write($"{experiment.title}{asterisk}\t{value.score}");
                             foreach (var q in value.queries)
                             {
@@ -220,41 +346,231 @@ namespace MyApp
                         }
                     }
 
+                    if (history.TryGetValue(e.ruu, out List<string> lines))
+                    {
+                        foreach (var line in lines)
+                        {
+                            tw.WriteLine(line);
+                        }
+                    }
+
                     tw.WriteLine();
                 }
             }
         }
 
-        static ResultDict CreateConsole0(string path, bool isTreatment)
+        static Dictionary<string, string> Alias = new Dictionary<string, string>();
+        static Dictionary<string, List<string>> history = new Dictionary<string, List<string>>();
+        static void GetHistory(string path, string name)
         {
-            ResultDict results = new ResultDict(StringComparer.OrdinalIgnoreCase);
-            CreateConsole1(path, results, isTreatment);
-            return results;
+            string filename = Path.GetFileNameWithoutExtension(path);
+
+            using (TextReader tr = new StreamReader(path))
+            {
+                string title = null;
+                string diff = null;
+                string line = tr.ReadLine();
+                List<string> appendList = null;
+                int ALOffset = 0;
+                int scoreTotal = 0;
+                int cscoreTotal = 0;
+                int cscoreCnt = 0;
+
+                while (null != (line = tr.ReadLine()))
+                {
+                    string[] parts = line.Split('\t');
+                    if (parts.Length <4) {
+                        title = null;
+                        appendList = null;
+                        continue;
+                    }
+
+                    if (parts[0].Length>0)
+                    {
+                        title = null;
+                    }
+
+                    if (title == null)
+                    {
+                        if (parts[0].Length > 0)
+                        {
+                            title = parts[0];
+                            diff = parts[1];
+                            if (!history.TryGetValue(title, out appendList))
+                            {
+                                appendList = new List<string>();
+                                history[title]= appendList;
+                            }
+
+                            ALOffset = appendList.Count;
+                            scoreTotal = 0;
+                            cscoreCnt = 0;
+                            cscoreTotal = 0;
+                        }
+                        else if (parts[1].Length > 0)
+                        {
+                            title = null;
+                            appendList = null;
+                        }
+                    }
+
+                    if (title==null)
+                    {
+                        continue;
+                    }
+
+                    if (parts[2].StartsWith("Control"))
+                    {
+                        if (int.TryParse(parts[3], out int scorec))
+                        {
+                            cscoreTotal += scorec;
+                            cscoreCnt++;
+                        }
+                        continue;
+                    }
+
+                    parts[2] = parts[2].Replace("Treatment", name); 
+                    if (diff!=null) parts[1] = diff;
+                    diff = null;
+                    HashSet<string> qs = new HashSet<string>();
+                    for (int i = 4; i<parts.Length; i++)
+                    {
+                            qs.Add(parts[i]);
+                    }
+
+                    int score = Score(title, qs);
+                    scoreTotal += score;
+                    parts[3] = "" + score;
+                    appendList.Add(string.Join('\t', parts));
+
+                    double cscoreAve = (double)cscoreTotal / cscoreCnt;
+                    double tscoreAve = (double)(scoreTotal / (appendList.Count - ALOffset));
+                    int scoreAve = (int)Math.Round(tscoreAve - cscoreAve);
+
+                    var parts2 = appendList[ALOffset].Split('\t');
+                    parts2[1] = "" + scoreAve;
+                    appendList[ALOffset] = string.Join('\t', parts2);
+                }
+            }
         }
 
-        static void CreateConsole1(string path, ResultDict results, bool isTreatment)
-        { 
+        static int Score(string ruu, HashSet<string> seenQueries1)
+        {
+            HashSet<string> seenQueries = new HashSet<string>();
+            foreach (var s in seenQueries1)
+            {
+                if (equivalents.TryGetValue(s, out string sub))
+                {
+                    seenQueries.Add(sub);
+                }
+                else
+                {
+                    seenQueries.Add(s);
+                }
+            }
+
+            double score = 0;
+            if (ideals.TryGetValue(ruu, out var qs))
+            {
+                foreach (var q in qs)
+                {
+                    var query = q.Key;
+
+
+                    if (seenQueries.Contains(query))
+                    {
+                        score += q.Value;
+                    }
+                }
+            }
+
+            int score1 = (int)(score + .5);
+
+            foreach (var n in perfects)
+            {
+                bool perfect = true;
+                foreach (var pq in n)
+                {
+                    if (!seenQueries.Contains(pq))
+                    {
+                        perfect = false;
+                    }
+                }
+
+                if (perfect)
+                {
+                    score1 = 100;
+                }
+            }
+
+            return score1;
+        }
+
+        static void GetTreatmentScans(string path, HashSet<string> paths)
+        {
+
             foreach (var dir in Directory.GetDirectories(path))
             {
                 string name = Path.GetFileName(dir);
                 if (name.StartsWith("SydneyResponses"))
                 {
-                    CreateConsoleDir(dir, results, isTreatment);
+                    GetTreatmentScansDir(dir, paths);
                 }
                 else
                 {
-                    CreateConsole1(dir, results, isTreatment);
+                    GetTreatmentScans(dir, paths);
                 }
             }
         }
 
-        static void CreateConsoleDir(string s, ResultDict results, bool isTreatment)
+        static void GetTreatmentScansDir(string s, HashSet<string> paths)
         {
             foreach (var f in Directory.GetFiles(s))
             {
                 if (Path.GetExtension(f) == ".json")
                 {
-                    var r = GetJsonConsole(f, isTreatment);
+                    string name = Path.GetFileNameWithoutExtension(f);
+                    foreach (var n in experimentprefix)
+                    {
+                        if (name.StartsWith(n))
+                        {
+                            paths.Add(n);
+                        }
+                    }
+                }
+            }
+        }
+
+        static ResultDict CreateConsole0(string path, string prefix)
+        {
+            ResultDict results = new ResultDict(StringComparer.OrdinalIgnoreCase);
+            CreateConsole1(path, results, prefix);
+            return results;
+        }
+
+        static void CreateConsole1(string path, ResultDict results, string prefix)
+        {
+            foreach (var dir in Directory.GetDirectories(path))
+            {
+                string name = Path.GetFileName(dir);
+                if (name.StartsWith("SydneyResponses"))
+                {
+                    CreateConsoleDir(dir, results, prefix);
+                }
+                else
+                {
+                    CreateConsole1(dir, results, prefix);
+                }
+            }
+        }
+
+        static void CreateConsoleDir(string s, ResultDict results, string prefix)
+        {
+            foreach (var f in Directory.GetFiles(s))
+            {
+                if (Path.GetExtension(f) == ".json")
+                {
+                    var r = GetJsonConsole(f, prefix);
                     if (r.ruu != null)
                     {
                         results[r.ruu] = (r.score, r.queries);
@@ -263,15 +579,15 @@ namespace MyApp
             }
         }
 
-        static (double score, string ruu, HashSet<string> queries) GetJsonConsole(string f, bool isTreatment)
+        static (double score, string ruu, HashSet<string> queries) GetJsonConsole(string f, string prefix)
         {
-            string ruu = ParseName(Path.GetFileNameWithoutExtension(f), isTreatment);
-            if (ruu==null)
+            string ruu = ParseName(Path.GetFileNameWithoutExtension(f), prefix);
+            if (ruu == null)
             {
                 return (0, null, null);
             }
 
-            if (!ideals.TryGetValue(ruu, out var val) || val.Count()==0)
+            if (!ideals.TryGetValue(ruu, out var val) || val.Count() == 0)
             {
                 return (0, null, null);
             }
@@ -288,7 +604,7 @@ namespace MyApp
 
             HashSet<string> seenQueries = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            if (messages==null)
+            if (messages == null)
             {
                 return (0, null, null);
             }
@@ -308,6 +624,10 @@ namespace MyApp
                                     if (fact["title"].ToString() == "EnterpriseSearchSearchQuery")
                                     {
                                         var query = FixQuery(fact["value"].ToString());
+                                        if (ruu.StartsWith("Draft an em") && query.EndsWith("previous meetings about Team scrum") && !prefix.StartsWith("control"))
+                                        {
+
+                                        }
                                         seenQueries.Add(query);
                                     }
                                 }
@@ -317,21 +637,9 @@ namespace MyApp
                 }
             }
 
-            double score = 0;
-            if (ideals.TryGetValue(ruu, out var qs))
-            {
-                foreach (var q in qs)
-                {
-                    if (seenQueries.Contains(q.Key))
-                    {
-                        score += q.Value;
-                    }
-                }
-            }
-
-            int score1 = (int)(score + .5);
+            int score1 = Score(ruu, seenQueries);
             return (score1, ruu, seenQueries);
-        }
+;       }
 
 
         static HashSet<string> found = new HashSet<string>();
@@ -372,7 +680,7 @@ namespace MyApp
         {
             foreach (var f in Directory.GetFiles(s))
             {
-                if (Path.GetExtension(f)==".json")
+                if (Path.GetExtension(f) == ".json")
                 {
                     GetJson(f);
                 }
@@ -388,6 +696,11 @@ namespace MyApp
             using (TextReader tr = new StreamReader(f))
             {
                 json = tr.ReadToEnd();
+            }
+
+            if (ParseName(Path.GetFileNameWithoutExtension(f), controlPrefix) != null)
+            {
+                CheckInterationCount(ruu, json);
             }
 
             var jsonObject = JsonNode.Parse(json);
@@ -453,29 +766,29 @@ namespace MyApp
         {
             string pattern = "[^a-zA-Z0-9\\s]";
 
-           return Regex.Replace(query, pattern, "");
+            return Regex.Replace(query, pattern, "");
         }
 
         static List<string> GetHits(string result)
         {
             List<string> hits = new List<string>();
             int pos = 0;
-            while (pos>=0)
+            while (pos >= 0)
             {
                 pos = result.IndexOf("[", pos + 1);
-                if (pos<0)
+                if (pos < 0)
                 {
                     continue;
                 }
 
                 int pos2 = result.IndexOf("]", pos);
-                if (pos>0 && pos2 > 0 && result.Length>(pos2+1) && result[pos2+1]=='(')
+                if (pos > 0 && pos2 > 0 && result.Length > (pos2 + 1) && result[pos2 + 1] == '(')
                 {
                     string between = result.Substring(pos + 1, pos2 - pos - 1);
                     if (int.TryParse(between, out _))
                     {
                         int pos3 = result.IndexOf(")", pos2);
-                        if (pos3>0)
+                        if (pos3 > 0)
                         {
                             string refd = result.Substring(pos2 + 2, pos3 - pos2 - 2);
                             hits.Add(refd.Trim());
@@ -516,40 +829,27 @@ namespace MyApp
             scoreDict[query]++;
         }
 
-        static List<string> prefix = new List<string>()
+        static string controlPrefix = "control_sydney_response_";
+        static List<string> experimentprefix = new List<string>()
         {
-            "control_sydney_response_",
             "experiment_sydney_response_",
+            "experiment2_sydney_response_",
+            "experiment3_sydney_response_",
         };
+
+        static string ParseName(string s, string prefix)
+        {
+            if (s.StartsWith(prefix))
+            {
+                return Trim(s.Substring(prefix.Length));
+            }
+
+            return null;
+        }
 
         static string ParseName(string s)
         {
-            foreach (var p in prefix)
-            {
-                if (s.StartsWith(p))
-                {
-                    return Trim(s.Substring(p.Length));
-                }    
-            }
-
-            System.Diagnostics.Debugger.Break();
-            return s;
-        }
-
-        static string ParseName(string s, bool isTreatment)
-        {
-            foreach (var p in prefix)
-            {
-                if (s.StartsWith(p))
-                {
-                    if (isTreatment && p == prefix[0]) return null;
-                    if (!isTreatment && p == prefix[1]) return null;
-                    return Trim(s.Substring(p.Length));
-                }
-            }
-
-            System.Diagnostics.Debugger.Break();
-            return s;
+            return ParseName(s, controlPrefix) ?? ParseName(s, experimentprefix[0]) ?? ParseName(s, experimentprefix[1]) ?? ParseName(s, experimentprefix[2]);
         }
 
         static string Trim(string s)

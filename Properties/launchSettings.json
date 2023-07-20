@@ -2,7 +2,7 @@
   "profiles": {
     "GetIdealQueries": {
       "commandName": "Project",
-      "commandLineArgs": "C:\\Users\\bobgood\\Downloads\\flux_6_30\\92a805b8-0199-44dc-af51-70d78ac86cf1 t=C:\\Users\\bobgood\\Downloads\\flux_6_30 C:\\Users\\bobgood\\Downloads\\Exp3\\0606ab36-fa48-4c8f-9985-ea32967e0a94 t=C:\\Users\\bobgood\\Downloads\\flux_6_30\\92a805b8-0199-44dc-af51-70d78ac86cf1 t=C:\\Users\\bobgood\\Downloads\\Exp3\\0606ab36-fa48-4c8f-9985-ea32967e0a94"
+      "commandLineArgs": "e:\\tmp\\report_7_20B.tsv p=Examples=e:\\tmp\\report_7_19.tsv p=Baseline=e:\\tmp\\report_7_18.tsv C:\\Users\\bobgood\\Downloads\\flux_6_17\\0e3c82ad-2de1-4cf8-8b2a-7dd5c653bf4f C:\\Users\\bobgood\\Downloads\\flux_6_17\\1d7c53d9-5423-4745-b1f0-0790bc2b3e6c C:\\Users\\bobgood\\Downloads\\flux_6_17\\d8348b5a-014b-4ed8-9c74-cf8354dbb97b C:\\Users\\bobgood\\Downloads\\7_20\\607c18e1-dff7-475b-a57f-7ac5b631baad t=C:\\Users\\bobgood\\Downloads\\7_20\\607c18e1-dff7-475b-a57f-7ac5b631baad"
     }
   }
 }
