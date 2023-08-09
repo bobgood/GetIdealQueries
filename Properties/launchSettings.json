@@ -2,7 +2,7 @@
   "profiles": {
     "GetIdealQueries": {
       "commandName": "Project",
-      "commandLineArgs": "e:\\tmp\\report_7_20B.tsv p=Examples=e:\\tmp\\report_7_19.tsv p=Baseline=e:\\tmp\\report_7_18.tsv C:\\Users\\bobgood\\Downloads\\flux_6_17\\0e3c82ad-2de1-4cf8-8b2a-7dd5c653bf4f C:\\Users\\bobgood\\Downloads\\flux_6_17\\1d7c53d9-5423-4745-b1f0-0790bc2b3e6c C:\\Users\\bobgood\\Downloads\\flux_6_17\\d8348b5a-014b-4ed8-9c74-cf8354dbb97b C:\\Users\\bobgood\\Downloads\\7_20\\607c18e1-dff7-475b-a57f-7ac5b631baad t=C:\\Users\\bobgood\\Downloads\\7_20\\607c18e1-dff7-475b-a57f-7ac5b631baad"
+      "commandLineArgs": "e:\\tmp\\report_quant_8_8B.tsv \"C:\\Users\\bobgood\\Downloads\\quantization\\44dfa161-8c8e-4f78-bc2d-c058bdf0e7bd\" \"C:\\Users\\bobgood\\Downloads\\quantization2\\9a522ff4-e7ed-4440-92b6-ce895e11d91d\" \"C:\\Users\\bobgood\\Downloads\\quantization3\\98bb35b2-80d5-4ac0-a18d-f0300f08acdd\""
     }
   }
 }

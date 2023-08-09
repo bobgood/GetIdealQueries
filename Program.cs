@@ -3,15 +3,18 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection.Metadata.Ecma335;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using AI.Dev.OpenAI.GPT;
+
 
 
 namespace MyApp
 {
-    using RESULT = (double score, System.Collections.Generic.HashSet<string> queries);
-    using ResultDict = System.Collections.Generic.Dictionary<string, (double score, System.Collections.Generic.HashSet<string> queries)>;
+    using ResultDict = System.Collections.Generic.Dictionary<string, (double score, System.Collections.Generic.HashSet<string> queries, bool IsSorry, int inputTokens, int outputTokens)>;
 
     internal class Program
     {
@@ -158,7 +161,7 @@ namespace MyApp
                 while (null != (line = tr.ReadLine()))
                 {
                     var p = line.Trim();
-                    if (p.Length >0)
+                    if (p.Length > 0)
                     {
                         result.Add(p);
                     }
@@ -204,11 +207,18 @@ namespace MyApp
                 var arg = args[i];
                 string path = arg;
                 bool isTreatment = false;
+                bool isAll = true;
                 if (path.Length > 2 && path[1] == '=')
                 {
                     if (path[0] == 't')
                     {
                         isTreatment = true;
+                        isAll = false;
+                    }
+                    if (path[0] == 'c')
+                    {
+                        isTreatment = false;
+                        isAll = false;
                     }
 
                     if (path[0] == 'p')
@@ -225,18 +235,22 @@ namespace MyApp
 
                 string title;
                 List<string> prefixes = new List<string>() { controlPrefix };
-                if (isTreatment)
+                if (isTreatment || isAll)
                 {
                     var prefixes1 = new HashSet<string>();
                     GetTreatmentScans(path, prefixes1);
                     prefixes = prefixes1.ToList();
+                    if (isAll)
+                    {
+                        prefixes.Add(controlPrefix);
+                    }
                     prefixes.Sort();
                 }
 
 
                 foreach (var pre in prefixes)
                 {
-                    if (isTreatment)
+                    if (pre != controlPrefix)
                     {
                         title = "Treatment";
                         if (treatmentCount++ > 0)
@@ -275,6 +289,17 @@ namespace MyApp
 
             }
 
+            int citoken = 0;
+            int cotoken = 0;
+            int titoken = 0;
+            int totoken = 0;
+            int cqcnt = 0;
+            int tqcnt = 0;
+            int csorry = 0;
+            int tsorry = 0;
+
+            HashSet<string> tsorries = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> csorries = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var ruu in allRuus)
             {
                 double ctot = 0;
@@ -290,11 +315,27 @@ namespace MyApp
                         {
                             ttot += line.score;
                             tcnt++;
+                            tqcnt++;
+                            titoken += line.inputTokens;
+                            totoken += line.outputTokens;
+                            if (line.IsSorry)
+                            {
+                                tsorry++;
+                                tsorries.Add(ruu);
+                            }
                         }
                         else
                         {
                             ctot += line.score;
                             ccnt++;
+                            cqcnt++;
+                            citoken += line.inputTokens;
+                            cotoken += line.outputTokens;
+                            if (line.IsSorry)
+                            {
+                                csorry++;
+                                csorries.Add(ruu);
+                            }
                         }
                     }
 
@@ -308,13 +349,26 @@ namespace MyApp
                 }
             }
 
+
             var sortedList = prios.OrderBy(item => item.prio).ToList();
+
+            using (TextWriter tw = new StreamWriter("e:\\tmp\\tokens.tsv"))
+            {
+                tw.WriteLine("\tinput tokens\toutput tokens\tsorry\ttot");
+                tw.WriteLine($"control\t{(double)citoken / cqcnt:0} \t{(double)cotoken / cqcnt:0}\t{(double)csorry * 100 / cqcnt:0.0}%\t{cqcnt}");
+                tw.WriteLine($"treatment\t{(double)titoken / tqcnt:0}\t{(double)totoken / tqcnt:0}\t{(double)tsorry * 100 / tqcnt:0.0}%\t{tqcnt}");
+            }
+
+            bool onlysorries = false;
 
             using (TextWriter tw = new StreamWriter(args[0]))
             {
-                tw.WriteLine("utterance\tscore diff\tsource\tscore\t3S query 1\t3S query 2");
+                tw.WriteLine("utterance\tscore diff\tsorry\tsource\tscore\t3S query 1\t3S query 2");
                 foreach (var e in sortedList)
                 {
+                    var ts = tsorries.Contains(e.ruu);
+                    var cs = csorries.Contains(e.ruu);
+                    if (onlysorries && (!ts && !cs)) continue;
                     bool first = true;
                     foreach (var experiment in experiments)
                     {
@@ -329,6 +383,13 @@ namespace MyApp
                             {
                                 tw.Write("\t\t");
                             }
+
+                            if (value.IsSorry)
+                            {
+                                tw.Write("Sorry");
+                            }
+
+                            tw.Write("\t");
 
                             string asterisk = "";
                             if (idealNoCitations.Contains(e.ruu))
@@ -379,13 +440,14 @@ namespace MyApp
                 while (null != (line = tr.ReadLine()))
                 {
                     string[] parts = line.Split('\t');
-                    if (parts.Length <4) {
+                    if (parts.Length < 4)
+                    {
                         title = null;
                         appendList = null;
                         continue;
                     }
 
-                    if (parts[0].Length>0)
+                    if (parts[0].Length > 0)
                     {
                         title = null;
                     }
@@ -399,7 +461,7 @@ namespace MyApp
                             if (!history.TryGetValue(title, out appendList))
                             {
                                 appendList = new List<string>();
-                                history[title]= appendList;
+                                history[title] = appendList;
                             }
 
                             ALOffset = appendList.Count;
@@ -414,7 +476,7 @@ namespace MyApp
                         }
                     }
 
-                    if (title==null)
+                    if (title == null)
                     {
                         continue;
                     }
@@ -429,13 +491,13 @@ namespace MyApp
                         continue;
                     }
 
-                    parts[2] = parts[2].Replace("Treatment", name); 
-                    if (diff!=null) parts[1] = diff;
+                    parts[2] = parts[2].Replace("Treatment", name);
+                    if (diff != null) parts[1] = diff;
                     diff = null;
                     HashSet<string> qs = new HashSet<string>();
-                    for (int i = 4; i<parts.Length; i++)
+                    for (int i = 4; i < parts.Length; i++)
                     {
-                            qs.Add(parts[i]);
+                        qs.Add(parts[i]);
                     }
 
                     int score = Score(title, qs);
@@ -573,23 +635,23 @@ namespace MyApp
                     var r = GetJsonConsole(f, prefix);
                     if (r.ruu != null)
                     {
-                        results[r.ruu] = (r.score, r.queries);
+                        results[r.ruu] = (r.score, r.queries, r.IsSorry, r.inputTokens, r.outputTokens);
                     }
                 }
             }
         }
 
-        static (double score, string ruu, HashSet<string> queries) GetJsonConsole(string f, string prefix)
+        static (double score, string ruu, HashSet<string> queries, bool IsSorry, int inputTokens, int outputTokens) GetJsonConsole(string f, string prefix)
         {
             string ruu = ParseName(Path.GetFileNameWithoutExtension(f), prefix);
             if (ruu == null)
             {
-                return (0, null, null);
+                return (0, null, null, false, 0, 0);
             }
 
             if (!ideals.TryGetValue(ruu, out var val) || val.Count() == 0)
             {
-                return (0, null, null);
+                return (0, null, null, false, 0, 0);
             }
 
             string json;
@@ -598,48 +660,85 @@ namespace MyApp
                 json = tr.ReadToEnd();
             }
 
-            var jsonObject = JsonNode.Parse(json);
-            var messages = jsonObject["messages"] as JsonArray;
-
-
-            HashSet<string> seenQueries = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            if (messages == null)
+            try
             {
-                return (0, null, null);
-            }
 
-            foreach (var message in messages)
-            {
-                if (message["messageType"].ToString() == "Internal")
+                var jsonObject = JsonNode.Parse(json);
+                var messages = jsonObject["messages"] as JsonArray;
+                var telemetry = jsonObject["telemetry"] as JsonObject;
+                var metrics = telemetry["metrics"] as JsonArray;
+
+                HashSet<string> seenQueries = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                if (messages == null)
                 {
-                    foreach (var adaptiveCard in message["adaptiveCards"] as JsonArray)
-                    {
-                        foreach (var card in adaptiveCard["body"] as JsonArray)
-                        {
-                            if (card["type"].ToString() == "FactSet")
-                            {
-                                foreach (var fact in card["facts"] as JsonArray)
-                                {
-                                    if (fact["title"].ToString() == "EnterpriseSearchSearchQuery")
-                                    {
-                                        var query = FixQuery(fact["value"].ToString());
-                                        if (ruu.StartsWith("Draft an em") && query.EndsWith("previous meetings about Team scrum") && !prefix.StartsWith("control"))
-                                        {
+                    return (0, null, null, false, 0, 0);
+                }
 
+                int inputTokens = 0;
+                int outputTokens = 0;
+                bool isSorry = false;
+                foreach (var message in messages)
+                {
+                    if (message["messageType"].ToString() == "Internal")
+                    {
+                        foreach (var adaptiveCard in message["adaptiveCards"] as JsonArray)
+                        {
+                            foreach (var card in adaptiveCard["body"] as JsonArray)
+                            {
+                                if (card["type"].ToString() == "FactSet")
+                                {
+                                    foreach (var fact in card["facts"] as JsonArray)
+                                    {
+                                        if (fact["title"].ToString() == "EnterpriseSearchSearchQuery")
+                                        {
+                                            var query = FixQuery(fact["value"].ToString());
+                                            seenQueries.Add(query);
                                         }
-                                        seenQueries.Add(query);
                                     }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            int score1 = Score(ruu, seenQueries);
-            return (score1, ruu, seenQueries);
-;       }
+                foreach (var metric in metrics)
+                {
+                    if (metric["serviceName"].ToString() == "PolymerLLM")
+                    {
+                        var inputString = metric["input"].ToString();
+                        var i1 = JsonSerializer.Deserialize<object>(inputString);
+
+                        var doc = JsonDocument.Parse(inputString);
+                        var i2 = doc.RootElement;
+                        if (i2.TryGetProperty("prompt", out JsonElement valueElement))
+                        {
+                            string input = valueElement.ToString();
+                            inputTokens += GPT3Tokenizer.Encode(input).Count();
+                        }
+                        var outputString = metric["output"].ToString();
+                        var doco = JsonDocument.Parse(outputString);
+                        var o2 = doco.RootElement;
+                        if (o2.TryGetProperty("modelResponse", out JsonElement valueElement2))
+                        {
+                            string output = valueElement2.ToString();
+                            outputTokens += GPT3Tokenizer.Encode(output).Count();
+                            if (output.ToLower().Contains("i'm sorry"))
+                            {
+                                isSorry = true;
+                            }
+                        }
+                    }
+                }
+
+                int score1 = Score(ruu, seenQueries);
+                return (score1, ruu, seenQueries, isSorry, inputTokens, outputTokens);
+            }
+            catch
+            {
+                return (0, null, null, false, 0, 0);
+            }
+        }
 
 
         static HashSet<string> found = new HashSet<string>();
