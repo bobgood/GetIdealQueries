@@ -2,7 +2,7 @@
   "profiles": {
     "GetIdealQueries": {
       "commandName": "Project",
-      "commandLineArgs": "e:\\tmp\\report_quant_8_8B.tsv \"C:\\Users\\bobgood\\Downloads\\quantization\\44dfa161-8c8e-4f78-bc2d-c058bdf0e7bd\" \"C:\\Users\\bobgood\\Downloads\\quantization2\\9a522ff4-e7ed-4440-92b6-ce895e11d91d\" \"C:\\Users\\bobgood\\Downloads\\quantization3\\98bb35b2-80d5-4ac0-a18d-f0300f08acdd\""
+      "commandLineArgs": "e:\\tmp\\report_IM_8_29.tsv \"C:\\Users\\bobgood\\Downloads\\Flux_inner_monologue_exp1\\0827_run1\" \"C:\\Users\\bobgood\\Downloads\\Flux_inner_monologue_exp1\\0828_run2\""
     }
   }
 }

@@ -22,6 +22,7 @@ namespace MyApp
         static string multiFilename = "e:\\tmp\\multi.tsv";
 
         static void Main(string[] args)
+        
         {
             if (args.Length > 1)
             {
@@ -649,11 +650,6 @@ namespace MyApp
                 return (0, null, null, false, 0, 0);
             }
 
-            if (!ideals.TryGetValue(ruu, out var val) || val.Count() == 0)
-            {
-                return (0, null, null, false, 0, 0);
-            }
-
             string json;
             using (TextReader tr = new StreamReader(f))
             {
@@ -680,7 +676,7 @@ namespace MyApp
                 bool isSorry = false;
                 foreach (var message in messages)
                 {
-                    if (message["messageType"].ToString() == "Internal")
+                    if (message["messageType"].ToString() == "Internal" || message["messageType"].ToString() == "Diagnostics")
                     {
                         foreach (var adaptiveCard in message["adaptiveCards"] as JsonArray)
                         {
